@@ -1,0 +1,114 @@
+# 1.2 Imports & plotting setup
+import os
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+sns.set_style("whitegrid")
+%matplotlib inline
+
+# 2.1 Adjust these paths if your files live elsewhere under /content
+train_path = '/content/train.csv'
+test_path  = '/content/test.csv'
+sub_path   = '/content/gender_submission.csv'
+
+# 2.2 Read into DataFrames
+train = pd.read_csv(train_path)
+test  = pd.read_csv(test_path)
+sub   = pd.read_csv(sub_path)
+
+# 2.3 Quick sanity‑check
+print("Train shape:", train.shape)
+print("Test  shape:", test.shape)
+print("Sub   shape:", sub.shape)
+
+display(train.head())           # columns & sample rows  
+print(train.info())             # dtypes & non‑null counts  
+display(train.isnull().sum())   # count of missing values
+display(test.head())  
+print(test.info())  
+display(test.isnull().sum())  
+display(sub.head())  
+print(sub.info())  
+
+train['is_train'] = 1
+test ['is_train'] = 0
+test ['Survived']  = np.nan   # placeholder so the column exists
+
+full = pd.concat([train, test], sort=False).reset_index(drop=True)
+print("Combined shape:", full.shape)
+
+# Ticket is noisy text, Cabin is 77% missing, PassengerId moves to sub later
+full.drop(columns=['PassengerId','Ticket','Cabin'], errors='ignore', inplace=True)
+# Age → median, simple but effective
+full['Age'].fillna(full['Age'].median(), inplace=True)
+
+# Embarked → most common port
+full['Embarked'].fillna(full['Embarked'].mode()[0], inplace=True)
+
+# Fare → test file has a single missing, fill with median
+full['Fare'].fillna(full['Fare'].median(), inplace=True)
+for col in ['Survived','Pclass','Sex','Embarked']:
+    full[col] = full[col].astype('category')
+# Family size
+full['FamilySize'] = full['SibSp'] + full['Parch'] + 1
+
+# Title from Name
+full['Title'] = full['Name'].str.extract(r',\s*([^\.]+)\.', expand=False)
+
+# Age groups
+full['AgeGroup'] = pd.cut(
+    full['Age'],
+    bins=[0,12,20,40,60,120],
+    labels=['Child','Teen','Adult','MidAge','Senior']
+)
+
+# Drop Name (we’ve extracted Title)
+full.drop(columns=['Name'], inplace=True)
+train_clean = full[full['is_train']==1].drop(columns=['is_train'])
+test_clean  = full[full['is_train']==0].drop(columns=['is_train','Survived'])
+
+#universal plots
+# Survival counts
+sns.countplot(x='Survived', data=train_clean)
+plt.title('Overall Survival'); plt.show()
+
+# Pclass distribution
+sns.countplot(x='Pclass', data=train_clean)
+plt.title('Passenger Class'); plt.show()
+
+# AgeGroup distribution
+sns.countplot(x='AgeGroup', data=train_clean)
+plt.title('Age Groups'); plt.show()
+
+
+#bivarient relationships
+
+# Survival by Sex
+sns.countplot(x='Survived', hue='Sex', data=train_clean)
+plt.title('Survival by Sex'); plt.show()
+
+# Survival rate by Class
+sns.barplot(x='Pclass', y='Survived', data=train_clean)
+plt.title('Survival Rate by Class'); plt.ylabel('Rate'); plt.show()
+
+# Survival rate by AgeGroup
+sns.barplot(x='AgeGroup', y='Survived', data=train_clean)
+plt.title('Survival Rate by Age Group'); plt.ylabel('Rate'); plt.show()
+
+
+#correlation and pairwise
+
+# Numeric correlation
+num_cols = ['Age','Fare','FamilySize']
+corr = train_clean[num_cols + ['Survived']].corr()
+sns.heatmap(corr, annot=True, fmt=".2f", cmap='coolwarm')
+plt.title('Correlation Matrix'); plt.show()
+
+# Pairplot
+sns.pairplot(
+    train_clean[['Age','Fare','FamilySize','Survived']].dropna(),
+    hue='Survived', diag_kind='hist'
+)
+plt.show()
